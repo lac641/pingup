@@ -1,4 +1,4 @@
-import { IdCardLanyard } from "lucide-react";
+
 import imagekit from "../configs/imageKit.js";
 import User from "../models/User.js";
 import fs from "fs";
