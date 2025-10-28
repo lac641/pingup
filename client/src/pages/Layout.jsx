@@ -4,9 +4,11 @@ import { Outlet } from 'react-router-dom'      // ✅ correct import
 import { Menu, X } from 'lucide-react'         // ✅ icons only
 import { dummyUserData } from '../assets/assets'
 import Loading from '../components/Loading'
+import { useSelector } from 'react-redux'
 
 const Layout = () => {
-  const user = dummyUserData
+  
+  const user = useSelector((state)=>state.user.value)
   const [sideBarOpen, setSidebarOpen] = useState(false)
 
   return user ? (
