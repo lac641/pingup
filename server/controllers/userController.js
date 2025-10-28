@@ -183,64 +183,99 @@ export const sendConnectionRequest = async (req, res) => {
     const { userId } = req.auth();
     const { id } = req.body;
 
-    //check if user have sent more than 20 request in the last 24 hours
+    if (userId === id) {
+      return res.json({ success: false, message: "You cannot connect with yourself" });
+    }
+
+    // Rate limit check (max 20 requests / 24h)
     const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const connectionRequests = await Connection.find({
-      from_user_id,
-      userId,
+    const recentRequests = await Connection.find({
+      from_user_id: userId,
       created_at: { $gt: last24Hours },
     });
-    if (connectionRequests.length >= 20) {
+
+    if (recentRequests.length >= 20) {
       return res.json({
         success: false,
-        message:
-          "You have sent more than 20 connection requests in the last 24 hours",
+        message: "You have sent more than 20 connection requests in the last 24 hours",
       });
     }
 
-    //Check if users are already connected
+    // Check if connection already exists (in any direction)
     const connection = await Connection.findOne({
       $or: [
-        {from_user_id: userId, to_user_id: id},
-        {from_user_id: userId, to_user_id: userId},
-      ]
-    })
+        { from_user_id: userId, to_user_id: id },
+        { from_user_id: id, to_user_id: userId },
+      ],
+    });
 
-    if(!connection){
+    // 1️⃣ No connection exists → create new request
+    if (!connection) {
       const newConnection = await Connection.create({
         from_user_id: userId,
-        to_user_id: id
-      })
+        to_user_id: id,
+      });
 
       await inngest.send({
-        name:'app/connection-request',
-        data:{connectionId: newConnection._id}
-      })
+        name: "app/connection-request",
+        data: { connectionId: newConnection._id },
+      });
 
       return res.json({
         success: true,
-        message:
-          "Connection request sent successfully",
+        message: "Connection request sent successfully ✅",
       });
+    }
 
-    } else if(connection && connection.status === 'accepted') {
-
+    // 2️⃣ Already connected
+    if (connection.status === "accepted") {
       return res.json({
         success: false,
-        message:
-          "You have sent more than 20 connection requests in the last 24 hours",
+        message: "You are already connected with this user",
       });
+    }
 
+    // 3️⃣ Connection is pending
+    if (connection.status === "pending") {
+      // If YOU sent it
+      if (connection.from_user_id.toString() === userId) {
+        return res.json({
+          success: true,
+          message: "Connection request already sent ✅",
+        });
+      }
+
+      // If THEY sent it, accept automatically
+      if (connection.to_user_id.toString() === userId) {
+        connection.status = "accepted";
+        await connection.save();
+
+        const user = await User.findById(userId);
+        const otherUser = await User.findById(id);
+
+        if (!user.connections.includes(id)) {
+          user.connections.push(id);
+          await user.save();
+        }
+
+        if (!otherUser.connections.includes(userId)) {
+          otherUser.connections.push(userId);
+          await otherUser.save();
+        }
+
+        return res.json({
+          success: true,
+          message: "Connection accepted automatically ✅",
+        });
+      }
     }
 
     return res.json({
-        success: false,
-        message:
-          "Connection request pending",
-      });
-
+      success: false,
+      message: "Something went wrong",
+    });
   } catch (error) {
-     console.log(error);
+    console.log(error);
     return res.json({ success: false, message: error.message });
   }
 };
@@ -274,7 +309,7 @@ export const acceptConnectionRequest = async (req, res) => {
     const { userId } = req.auth();
    const {id} = req.body;
 
-   const connection = await connection.findOne({from_user_id: id, to_user_id:userId})
+   const connection = await Connection.findOne({from_user_id: id, to_user_id:userId})
 
    if(!connection){
     return res.json({success: false, message:'Connection not found'})
@@ -284,11 +319,11 @@ export const acceptConnectionRequest = async (req, res) => {
    user.connections.push(id);
    await user.save() 
 
-    const toUser = await User.findById(userId);
+    const toUser = await User.findById(id);
    toUser.connections.push(userId);
    await toUser.save() 
 
-   connection.status = 'accepted'
+   connection.status = 'accepted';
    await connection.save()
 
    res.json({success: true, message:'Connection accepted successfully'})
