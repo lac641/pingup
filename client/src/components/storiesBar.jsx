@@ -59,18 +59,18 @@ const StoriesBar = () => {
             key={index}
             className="relative rounded-lg shadow min-w-30 max-w-30 max-h-40 cursor-pointer hover:shadow-lg transition-all bg-gradient-to-b from-indigo-500 to-purple-600 hover:from-indigo-700 hover:to-purple-800 active:scale-95"
           >
-            {/* ✅ Fixed Profile Image */}
+            {/* ✅ Fixed profile image size for mobile */}
             <img
               src={story.user.profile_picture}
               alt="User"
-              className="absolute w-10 h-10 sm:w-12 sm:h-12 top-3 left-3 z-10 rounded-full ring-2 ring-gray-100 shadow object-cover"
+              className="absolute w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 top-2 left-2 z-10 rounded-full ring-2 ring-gray-100 shadow object-cover"
             />
 
-            <p className="absolute top-18 left-3 text-white/60 text-sm truncate max-w-24">
+            <p className="absolute top-16 left-3 text-white/60 text-xs sm:text-sm truncate max-w-24">
               {story.content}
             </p>
 
-            <p className="text-white absolute bottom-1 right-2 z-10 text-xs">
+            <p className="text-white absolute bottom-1 right-2 z-10 text-[10px] sm:text-xs">
               {moment(story.createdAt).fromNow()}
             </p>
 
