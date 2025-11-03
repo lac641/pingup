@@ -1,55 +1,175 @@
-import React from 'react'
-import { assets, dummyUserData } from '../assets/assets'
-import { Link, useNavigate } from 'react-router-dom'
-import Menuitems from './Menuitems'
-import { CirclePlus, LogOut } from 'lucide-react'
-import {UserButton, useClerk} from '@clerk/clerk-react'
-import { useSelector } from 'react-redux'
+import { useAuth } from '@clerk/clerk-react'
+import { ArrowLeft, Sparkle, TextIcon, Upload } from 'lucide-react'
+import React, { useState } from 'react'
+import toast from 'react-hot-toast'
+import api from '../api/axios'
 
-const Sidebar = (sideBarOpen, setSidebarOpen) => {
+const StoryModel = ({ setShowModal, fetchStories }) => {
+  const bgColors = ["#4f46e5", "#7c3aed", "#db2777", "#e11d48", "#ca8a04", "#0d9488"]
 
-  const navigate = useNavigate()
-  const user = useSelector((state)=>state.user.value)
-  const {signOut} = useClerk()
+  const [mode, setMode] = useState("text")
+  const [background, setBackground] = useState(bgColors[0])
+  const [text, setText] = useState("")
+  const [media, setMedia] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
+
+  const { getToken } = useAuth();
+
+  const MAX_VIDEO_DURATION = 60 // seconds
+  const MAX_VIDEO_SIZE_MB = 50 // MB
+
+  const handleMediaUpload = (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.type.startsWith('video')) {
+        if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+          toast.error(`Video file size cannot exceed ${MAX_VIDEO_SIZE_MB} MB.`)
+          setMedia(null)
+          setPreviewUrl(null)
+          return
+        }
+
+        const video = document.createElement('video')
+        video.preload = 'metadata'
+        video.onloadedmetadata = () => {
+          window.URL.revokeObjectURL(video.src)
+          if (video.duration > MAX_VIDEO_DURATION) {
+            toast.error('Video duration cannot exceed 1 minute')
+            setMedia(null)
+            setPreviewUrl(null)
+          } else {
+            setMedia(file)
+            setPreviewUrl(URL.createObjectURL(file))
+            setText('')
+            setMode('media')
+          }
+        }
+
+        video.src = URL.createObjectURL(file)
+      } else if (file.type.startsWith('image')) {
+        setMedia(file)
+        setPreviewUrl(URL.createObjectURL(file))
+        setText('')
+        setMode('media')
+      }
+    }
+  }
+
+  const handleCreateStory = async () => {
+    const media_type = mode === 'media'
+      ? media?.type.startsWith('image') ? 'image' : 'video'
+      : 'text'
+
+    if (media_type === 'text' && !text) {
+      throw new Error('Please enter some text')
+    }
+
+    let formData = new FormData()
+    formData.append('content', text)
+    formData.append('media_type', media_type)
+    formData.append('media', media)
+    formData.append('background_color', background)
+
+    const token = await getToken()
+    try {
+      const { data } = await api.post('/api/story/create', formData, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+
+      if (data.success) {
+        setShowModal(false)
+        toast.success('Story created successfully')
+        fetchStories()
+      } else {
+        toast.error(data.message)
+      }
+
+    } catch (error) {
+      toast.error(error.message)
+    }
+  }
 
   return (
-    <div className={`w-60 xl:w-72 bg-white border-r border-gray-200 flex flex-col justify-between items-center max-sm:absolute top-0 bottom-0 z-20 ${sideBarOpen ? 'translate-x-0' : 'max-sm:translate-x-full'} transition-all duration-300 ease-in-out`}>
-      <div className='w-full'>
-<img onClick={()=> navigate('/')} src={assets.logo} alt=""  className='w-26 ml-7 my-2 cursor-pointer'/>
-<hr className='border-gray-300 mb-8'/>
+    <div className='fixed inset-0 z-110 min-h-screen bg-black/80 backdrop-blur text-white flex items-center justify-center p-4'>
+      <div className='w-full max-w-md'>
+        <div className='text-center mb-4 flex items-center justify-between'>
+          <button onClick={() => setShowModal(false)} className='text-white p-2 cursor-pointer'>
+            <ArrowLeft />
+          </button>
+          <h2 className='text-lg font-semibold'>Create Story</h2>
+          <span className='w-10'></span>
+        </div>
 
-<Menuitems setSidebarOpen={setSidebarOpen}/>
+        {/* ✅ Responsive height fix for mobile */}
+        <div
+          className='rounded-lg h-[60vh] sm:h-96 flex items-center justify-center relative'
+          style={{ backgroundColor: background }}
+        >
+          {mode === "text" && (
+            <textarea
+              className='bg-transparent text-white w-full h-full p-6 text-lg resize-none focus:outline-none'
+              placeholder="What's on your mind?"
+              onChange={(e) => setText(e.target.value)}
+              value={text}
+            />
+          )}
 
+          {mode === 'media' && previewUrl && (
+            media?.type.startsWith('image') ? (
+              <img
+                src={previewUrl}
+                alt=""
+                className='object-contain max-h-[80%] max-w-full'
+              />
+            ) : (
+              <video
+                src={previewUrl}
+                controls
+                className='object-contain max-h-[80%] max-w-full'
+              />
+            )
+          )}
+        </div>
 
-<Link  to='/create-post' className='flex items-center justify-center gap-2 py-2.5 mt-6 mx-6 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-700 hover:to-purple-800 active:scale-95 transition text-white cursor-pointer'>
+        <div className='flex mt-4 gap-2'>
+          {bgColors.map((color) => (
+            <button
+              key={color}
+              className='w-6 h-6 rounded-full ring cursor-pointer'
+              style={{ backgroundColor: color }}
+              onClick={() => setBackground(color)}
+            />
+          ))}
+        </div>
 
-<CirclePlus className='w-5 h-5'/>
-Create Post
+        <div className='flex gap-2 mt-4'>
+          <button
+            onClick={() => { setMode('text'); setMedia(null); setPreviewUrl(null) }}
+            className={`flex-1 flex items-center justify-center gap-2 p-2 rounded cursor-pointer ${mode === 'text' ? 'bg-white text-black' : "bg-zinc-800"}`}
+          >
+            <TextIcon size={18} /> Text
+          </button>
 
-</Link>
+          <label className={`flex-1 flex items-center justify-center gap-2 p-2 rounded cursor-pointer ${mode === 'media' ? "bg-white text-black" : "bg-zinc-800"}`}>
+            <input
+              onChange={handleMediaUpload}
+              type="file"
+              accept='image/*, video/*'
+              className='hidden'
+            />
+            <Upload size={18} /> Photo/Video
+          </label>
+        </div>
+
+        <button
+          onClick={() => toast.promise(handleCreateStory(), { loading: 'Saving...' })}
+          className='flex items-center justify-center gap-2 text-white py-3 mt-4 w-full rounded bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 active:scale-95 transition cursor-pointer'
+        >
+          <Sparkle size={18} /> Create Story
+        </button>
       </div>
-
-<div className='w-full border-t border-gray-200 p-4 px-7 flex items-center justify-between md:mt-88'>
-
-<div className='flex gap-2 items-center cursor-pointer'>
-
-<UserButton/>
-
-<div>
-  <h1 className='text-sm font-medium'>{user.full_name}</h1>
-  <p className='text-xs text-gray-500'>@{user.username}</p>
-</div>
-
-</div>
-
-
-<LogOut onClick={signOut} className='w-4.5 text-gray-400 hover:text-gray-700 transition cursor-pointer'/>
-
-
-</div>
-
     </div>
   )
 }
 
-export default Sidebar
+export default StoryModel
